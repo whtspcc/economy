@@ -21,65 +21,187 @@ public class EconomyMainFrame extends JFrame {
     public EconomyMainFrame(LoadResult loadResult) {
         this.dataSet = loadResult.getDataSet();
 
-        setTitle("Экономика: Покупательная способность (Росстат)");
+        setTitle("Покупательная способность");
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
-        setSize(980, 640);
+        setMinimumSize(new Dimension(880, 560));
+        setSize(1000, 640);
         setLocationRelativeTo(null);
 
         initUi();
         fillUiFromData();
 
-        String sourceText = "Источник данных: " + loadResult.getSourceName()
-                + " | единицы: кг/месяц (яйца - шт./месяц)";
+        String sourceText = "<html><span style='color:#6B6964;'>Источник: <b style='color:#1A1816;'>"
+                + escapeHtml(loadResult.getSourceName())
+                + "</b> · кг/мес · яйца — шт./мес</span></html>";
         if (loadResult.getWarning() != null && !loadResult.getWarning().isBlank()) {
-            sourceText += " | предупреждения есть";
+            sourceText = "<html><span style='color:#6B6964;'>Источник: <b style='color:#1A1816;'>"
+                    + escapeHtml(loadResult.getSourceName())
+                    + "</b> · есть предупреждения</span></html>";
             resultArea.append("\n\nПредупреждения при загрузке:\n" + loadResult.getWarning());
         }
         sourceLabel.setText(sourceText);
     }
 
+    private static String escapeHtml(String s) {
+        if (s == null) {
+            return "";
+        }
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
     private void initUi() {
-        JPanel root = new JPanel(new BorderLayout(10, 10));
-        root.setBorder(new EmptyBorder(12, 12, 12, 12));
+        Font base = UiTheme.baseFont();
+        UIManager.put("Label.font", base);
+        UIManager.put("ComboBox.font", base);
+
+        JPanel root = new JPanel(new BorderLayout(0, 0));
+        root.setBackground(UiTheme.BG);
+        root.setBorder(new EmptyBorder(20, 24, 16, 24));
         setContentPane(root);
 
-        JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-        topPanel.add(new JLabel("Год:"));
+        JPanel header = buildHeader();
+        root.add(header, BorderLayout.NORTH);
+
+        JPanel center = new JPanel(new BorderLayout(0, 0));
+        center.setOpaque(false);
+
+        productList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        productList.setFont(UiTheme.baseFont());
+        productList.setBackground(UiTheme.SURFACE);
+        productList.setSelectionBackground(UiTheme.ACCENT_SOFT);
+        productList.setSelectionForeground(UiTheme.TEXT);
+        productList.setFixedCellHeight(32);
+        productList.setBorder(new EmptyBorder(4, 0, 4, 0));
+        productList.setCellRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+                    boolean isSelected, boolean cellHasFocus) {
+                JLabel l = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                l.setBorder(new EmptyBorder(4, 12, 4, 12));
+                l.setFont(UiTheme.baseFont());
+                return l;
+            }
+        });
+
+        JScrollPane leftScroll = new JScrollPane(productList);
+        leftScroll.setBorder(UiTheme.cardBorder());
+        leftScroll.getViewport().setBackground(UiTheme.SURFACE);
+        leftScroll.setBackground(UiTheme.SURFACE);
+
+        JLabel leftTitle = new JLabel("Продукты");
+        leftTitle.setFont(UiTheme.baseFont().deriveFont(Font.BOLD));
+        leftTitle.setForeground(UiTheme.TEXT);
+        leftTitle.setBorder(new EmptyBorder(0, 0, 8, 0));
+
+        JPanel leftCard = new JPanel(new BorderLayout(0, 0));
+        leftCard.setOpaque(false);
+        leftCard.add(leftTitle, BorderLayout.NORTH);
+        leftCard.add(leftScroll, BorderLayout.CENTER);
+
+        resultArea.setEditable(false);
+        resultArea.setFont(UiTheme.monoFont());
+        resultArea.setBackground(new Color(0xFA, 0xFA, 0xF8));
+        resultArea.setForeground(UiTheme.TEXT);
+        resultArea.setLineWrap(true);
+        resultArea.setWrapStyleWord(true);
+        resultArea.setBorder(new EmptyBorder(8, 12, 8, 12));
+
+        JScrollPane rightScroll = new JScrollPane(resultArea);
+        rightScroll.setBorder(UiTheme.cardBorder());
+        rightScroll.getViewport().setBackground(new Color(0xFA, 0xFA, 0xF8));
+
+        JLabel rightTitle = new JLabel("Результат");
+        rightTitle.setFont(UiTheme.baseFont().deriveFont(Font.BOLD));
+        rightTitle.setForeground(UiTheme.TEXT);
+        rightTitle.setBorder(new EmptyBorder(0, 0, 8, 0));
+
+        JPanel rightCard = new JPanel(new BorderLayout(0, 0));
+        rightCard.setOpaque(false);
+        rightCard.add(rightTitle, BorderLayout.NORTH);
+        rightCard.add(rightScroll, BorderLayout.CENTER);
+
+        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftCard, rightCard);
+        split.setResizeWeight(0.38);
+        split.setBorder(null);
+        split.setOpaque(false);
+        split.setDividerSize(20);
+        split.setContinuousLayout(true);
+        split.setDividerLocation(0.38);
+
+        center.add(split, BorderLayout.CENTER);
+        root.add(center, BorderLayout.CENTER);
+
+        JPanel footer = new JPanel(new BorderLayout());
+        footer.setOpaque(false);
+        footer.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 0, 0, UiTheme.BORDER),
+                new EmptyBorder(12, 0, 0, 0)));
+        sourceLabel.setFont(UiTheme.captionFont());
+        footer.add(sourceLabel, BorderLayout.WEST);
+        root.add(footer, BorderLayout.SOUTH);
+    }
+
+    private JPanel buildHeader() {
+        JPanel wrap = new JPanel(new BorderLayout(16, 0));
+        wrap.setOpaque(false);
+        wrap.setBorder(new EmptyBorder(0, 0, 20, 0));
+
+        JPanel accentBar = new JPanel();
+        accentBar.setPreferredSize(new Dimension(4, 1));
+        accentBar.setBackground(UiTheme.ACCENT_LINE);
+        accentBar.setOpaque(true);
+
+        JPanel titles = new JPanel(new BorderLayout(0, 4));
+        titles.setOpaque(false);
+        JLabel title = new JLabel("Покупательная способность");
+        title.setFont(UiTheme.titleFont());
+        title.setForeground(UiTheme.TEXT);
+        JLabel sub = new JLabel("Среднедушевой доход · сколько кг (или шт. яиц) можно купить в месяц");
+        sub.setFont(UiTheme.captionFont());
+        sub.setForeground(UiTheme.MUTED);
+        titles.add(title, BorderLayout.NORTH);
+        titles.add(sub, BorderLayout.CENTER);
+
+        JPanel leftHead = new JPanel(new BorderLayout(12, 0));
+        leftHead.setOpaque(false);
+        leftHead.add(accentBar, BorderLayout.WEST);
+        leftHead.add(titles, BorderLayout.CENTER);
+
+        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        toolbar.setOpaque(false);
+
+        JLabel yearLbl = new JLabel("Год");
+        yearLbl.setForeground(UiTheme.MUTED);
+        yearLbl.setFont(UiTheme.baseFont());
         yearBox.setPrototypeDisplayValue(9999);
-        topPanel.add(yearBox);
+        UiTheme.styleCombo(yearBox);
 
-        JButton calculateButton = new JButton("Рассчитать");
-        calculateButton.addActionListener(e -> calculatePurchasingPower());
-        topPanel.add(calculateButton);
+        JButton calc = new JButton("Рассчитать");
+        UiTheme.stylePrimaryButton(calc);
+        calc.addActionListener(e -> calculatePurchasingPower());
 
-        JButton selectAllButton = new JButton("Выбрать все");
-        selectAllButton.addActionListener(e -> {
+        JButton all = new JButton("Все");
+        UiTheme.styleGhostButton(all);
+        all.addActionListener(e -> {
             if (productList.getModel().getSize() > 0) {
                 productList.setSelectionInterval(0, productList.getModel().getSize() - 1);
             }
         });
-        topPanel.add(selectAllButton);
 
-        JButton clearSelectionButton = new JButton("Снять выбор");
-        clearSelectionButton.addActionListener(e -> productList.clearSelection());
-        topPanel.add(clearSelectionButton);
+        JButton none = new JButton("Снять");
+        UiTheme.styleGhostButton(none);
+        none.addActionListener(e -> productList.clearSelection());
 
-        root.add(topPanel, BorderLayout.NORTH);
+        toolbar.add(yearLbl);
+        toolbar.add(yearBox);
+        toolbar.add(Box.createHorizontalStrut(8));
+        toolbar.add(calc);
+        toolbar.add(all);
+        toolbar.add(none);
 
-        productList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-        JScrollPane leftScroll = new JScrollPane(productList);
-        leftScroll.setBorder(BorderFactory.createTitledBorder("Продукты"));
-
-        resultArea.setEditable(false);
-        resultArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
-        JScrollPane rightScroll = new JScrollPane(resultArea);
-        rightScroll.setBorder(BorderFactory.createTitledBorder("Результат"));
-
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftScroll, rightScroll);
-        splitPane.setResizeWeight(0.4);
-        root.add(splitPane, BorderLayout.CENTER);
-
-        root.add(sourceLabel, BorderLayout.SOUTH);
+        wrap.add(leftHead, BorderLayout.CENTER);
+        wrap.add(toolbar, BorderLayout.EAST);
+        return wrap;
     }
 
     private void fillUiFromData() {
@@ -101,10 +223,10 @@ public class EconomyMainFrame extends JFrame {
         if (productsModel.getSize() > 0) {
             productList.setSelectionInterval(0, Math.min(4, productsModel.getSize() - 1));
             resultArea.setText(
-                    "Выберите год и товары слева, затем нажмите \"Рассчитать\".\n\n"
-                            + "Интерпретация:\n"
-                            + "- значение = сколько кг продукта можно купить на среднедушевой доход за месяц.\n"
-                            + "- для позиции \"Яйца куриные\" единица измерения: штук в месяц.\n"
+                    "Выберите год и товары слева, затем нажмите «Рассчитать».\n\n"
+                            + "Интерпретация\n"
+                            + "— значение: кг продукта на среднедушевой доход за месяц.\n"
+                            + "— «Яйца куриные»: штук в месяц.\n"
             );
         } else {
             resultArea.setText("Данные не загружены. Проверьте источник.");
@@ -125,10 +247,10 @@ public class EconomyMainFrame extends JFrame {
         }
 
         StringBuilder sb = new StringBuilder();
-        sb.append("Год: ").append(year).append('\n');
-        sb.append("Выбрано товаров: ").append(selectedProducts.size()).append("\n\n");
-        sb.append(String.format("%-45s %12s%n", "Товар", "Значение"));
-        sb.append("--------------------------------------------------------------\n");
+        sb.append("Год ").append(year).append('\n');
+        sb.append("Выбрано позиций: ").append(selectedProducts.size()).append("\n\n");
+        sb.append(String.format("%-42s %12s%n", "Товар", "кг/мес"));
+        sb.append("────────────────────────────────────────────────────────────\n");
 
         double sum = 0.0;
         int count = 0;
@@ -140,10 +262,10 @@ public class EconomyMainFrame extends JFrame {
         for (String product : selectedProducts) {
             Double value = dataSet.getProductData().getOrDefault(product, Map.of()).get(year);
             if (value == null) {
-                sb.append(String.format("%-45s %12s%n", trimProduct(product), "нет данных"));
+                sb.append(String.format("%-42s %12s%n", trimProduct(product), "—"));
                 continue;
             }
-            sb.append(String.format(Locale.US, "%-45s %12.2f%n", trimProduct(product), value));
+            sb.append(String.format(Locale.US, "%-42s %12.2f%n", trimProduct(product), value));
             sum += value;
             count++;
             if (value > maxVal) {
@@ -158,19 +280,19 @@ public class EconomyMainFrame extends JFrame {
 
         sb.append('\n');
         if (count == 0) {
-            sb.append("Для выбранных товаров нет данных за ").append(year).append('.');
+            sb.append("Нет данных за ").append(year).append('.');
         } else {
             double avg = sum / count;
-            sb.append(String.format(Locale.US, "Среднее значение по выбранным товарам: %.2f%n", avg));
-            sb.append(String.format(Locale.US, "Суммарный индекс корзины: %.2f%n", sum));
-            sb.append(String.format(Locale.US, "Максимум: %.2f (%s)%n", maxVal, maxProduct));
-            sb.append(String.format(Locale.US, "Минимум: %.2f (%s)%n", minVal, minProduct));
+            sb.append(String.format(Locale.US, "Среднее по выбору: %.2f%n", avg));
+            sb.append(String.format(Locale.US, "Сумма (индекс корзины): %.2f%n", sum));
+            sb.append(String.format(Locale.US, "Максимум: %.2f — %s%n", maxVal, maxProduct));
+            sb.append(String.format(Locale.US, "Минимум: %.2f — %s%n", minVal, minProduct));
         }
 
         resultArea.setText(sb.toString());
     }
 
     private String trimProduct(String product) {
-        return product.length() <= 43 ? product : product.substring(0, 40) + "...";
+        return product.length() <= 40 ? product : product.substring(0, 37) + "...";
     }
 }

@@ -127,6 +127,10 @@ public final class TableParser {
                 continue;
             }
             productRowIndex++;
+            if (productRowIndex > CANONICAL_PRODUCT_NAMES.size()) {
+                // Keep only the baseline product basket used by the app.
+                continue;
+            }
             if (!isStrictRussianProductName(productName)) {
                 productName = canonicalProductName(productRowIndex);
             }

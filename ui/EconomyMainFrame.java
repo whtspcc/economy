@@ -6,14 +6,19 @@ import service.LoadResult;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
+import java.awt.geom.Ellipse2D;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 
 public class EconomyMainFrame extends JFrame {
     private final JComboBox<Integer> yearBox = new JComboBox<>();
+    private final JList<Integer> compareYearsList = new JList<>();
     private final JList<String> productList = new JList<>();
     private final JTextArea resultArea = new JTextArea();
+    private final TrendChartPanel trendChartPanel = new TrendChartPanel();
     private final JLabel sourceLabel = new JLabel();
 
     private final DataSet dataSet;
@@ -88,6 +93,41 @@ public class EconomyMainFrame extends JFrame {
         leftScroll.getViewport().setBackground(UiTheme.SURFACE);
         leftScroll.setBackground(UiTheme.SURFACE);
 
+        compareYearsList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        compareYearsList.setFont(UiTheme.baseFont());
+        compareYearsList.setBackground(UiTheme.SURFACE);
+        compareYearsList.setSelectionBackground(UiTheme.ACCENT_SOFT);
+        compareYearsList.setSelectionForeground(UiTheme.TEXT);
+        compareYearsList.setFixedCellHeight(28);
+        compareYearsList.setVisibleRowCount(6);
+        compareYearsList.setBorder(new EmptyBorder(4, 0, 4, 0));
+        compareYearsList.setCellRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+                    boolean isSelected, boolean cellHasFocus) {
+                JLabel l = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                l.setBorder(new EmptyBorder(3, 12, 3, 12));
+                l.setFont(UiTheme.baseFont());
+                return l;
+            }
+        });
+
+        JScrollPane yearsScroll = new JScrollPane(compareYearsList);
+        yearsScroll.setBorder(UiTheme.cardBorder());
+        yearsScroll.getViewport().setBackground(UiTheme.SURFACE);
+        yearsScroll.setBackground(UiTheme.SURFACE);
+        yearsScroll.setPreferredSize(new Dimension(180, 170));
+
+        JLabel yearsTitle = new JLabel("Годы для сравнения");
+        yearsTitle.setFont(UiTheme.baseFont().deriveFont(Font.BOLD));
+        yearsTitle.setForeground(UiTheme.TEXT);
+        yearsTitle.setBorder(new EmptyBorder(12, 0, 8, 0));
+
+        JPanel yearsCard = new JPanel(new BorderLayout(0, 0));
+        yearsCard.setOpaque(false);
+        yearsCard.add(yearsTitle, BorderLayout.NORTH);
+        yearsCard.add(yearsScroll, BorderLayout.CENTER);
+
         JLabel leftTitle = new JLabel("Продукты");
         leftTitle.setFont(UiTheme.baseFont().deriveFont(Font.BOLD));
         leftTitle.setForeground(UiTheme.TEXT);
@@ -97,6 +137,7 @@ public class EconomyMainFrame extends JFrame {
         leftCard.setOpaque(false);
         leftCard.add(leftTitle, BorderLayout.NORTH);
         leftCard.add(leftScroll, BorderLayout.CENTER);
+        leftCard.add(yearsCard, BorderLayout.SOUTH);
 
         resultArea.setEditable(false);
         resultArea.setFont(UiTheme.monoFont());
@@ -119,6 +160,10 @@ public class EconomyMainFrame extends JFrame {
         rightCard.setOpaque(false);
         rightCard.add(rightTitle, BorderLayout.NORTH);
         rightCard.add(rightScroll, BorderLayout.CENTER);
+        trendChartPanel.setBorder(UiTheme.cardBorder());
+        trendChartPanel.setBackground(UiTheme.SURFACE);
+        trendChartPanel.setPreferredSize(new Dimension(420, 260));
+        rightCard.add(trendChartPanel, BorderLayout.SOUTH);
 
         JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftCard, rightCard);
         split.setResizeWeight(0.38);
@@ -180,6 +225,10 @@ public class EconomyMainFrame extends JFrame {
         UiTheme.stylePrimaryButton(calc);
         calc.addActionListener(e -> calculatePurchasingPower());
 
+        JButton compare = new JButton("Сравнить");
+        UiTheme.styleGhostButton(compare);
+        compare.addActionListener(e -> compareByYears());
+
         JButton all = new JButton("Все");
         UiTheme.styleGhostButton(all);
         all.addActionListener(e -> {
@@ -196,6 +245,7 @@ public class EconomyMainFrame extends JFrame {
         toolbar.add(yearBox);
         toolbar.add(Box.createHorizontalStrut(8));
         toolbar.add(calc);
+        toolbar.add(compare);
         toolbar.add(all);
         toolbar.add(none);
 
@@ -206,12 +256,18 @@ public class EconomyMainFrame extends JFrame {
 
     private void fillUiFromData() {
         DefaultComboBoxModel<Integer> yearModel = new DefaultComboBoxModel<>();
+        DefaultListModel<Integer> compareYearModel = new DefaultListModel<>();
         for (Integer year : dataSet.getYears()) {
             yearModel.addElement(year);
+            compareYearModel.addElement(year);
         }
         yearBox.setModel(yearModel);
         if (yearModel.getSize() > 0) {
             yearBox.setSelectedIndex(yearModel.getSize() - 1);
+        }
+        compareYearsList.setModel(compareYearModel);
+        if (compareYearModel.getSize() > 0) {
+            compareYearsList.setSelectionInterval(Math.max(0, compareYearModel.getSize() - 5), compareYearModel.getSize() - 1);
         }
 
         DefaultListModel<String> productsModel = new DefaultListModel<>();
@@ -227,6 +283,7 @@ public class EconomyMainFrame extends JFrame {
                             + "Интерпретация\n"
                             + "— значение: кг продукта на среднедушевой доход за месяц.\n"
                             + "— «Яйца куриные»: штук в месяц.\n"
+                            + "— для графика выберите годы и нажмите «Сравнить».\n"
             );
         } else {
             resultArea.setText("Данные не загружены. Проверьте источник.");
@@ -292,7 +349,210 @@ public class EconomyMainFrame extends JFrame {
         resultArea.setText(sb.toString());
     }
 
+    private void compareByYears() {
+        List<String> selectedProducts = productList.getSelectedValuesList();
+        List<Integer> selectedYears = compareYearsList.getSelectedValuesList();
+
+        if (selectedProducts.isEmpty()) {
+            resultArea.setText("Для сравнения выберите хотя бы один продукт.");
+            trendChartPanel.clearData("Нет данных для графика");
+            return;
+        }
+        if (selectedYears.isEmpty()) {
+            resultArea.setText("Для сравнения выберите хотя бы один год.");
+            trendChartPanel.clearData("Нет данных для графика");
+            return;
+        }
+
+        List<Integer> years = new ArrayList<>(selectedYears);
+        years.sort(Integer::compareTo);
+
+        Map<String, Map<Integer, Double>> series = new LinkedHashMap<>();
+        int points = 0;
+        for (String product : selectedProducts) {
+            Map<Integer, Double> valuesByYear = dataSet.getProductData().getOrDefault(product, Map.of());
+            Map<Integer, Double> productSeries = new LinkedHashMap<>();
+            for (Integer year : years) {
+                Double value = valuesByYear.get(year);
+                if (value != null) {
+                    productSeries.put(year, value);
+                    points++;
+                }
+            }
+            if (!productSeries.isEmpty()) {
+                series.put(product, productSeries);
+            }
+        }
+
+        if (series.isEmpty()) {
+            resultArea.setText("По выбранным продуктам и годам данных не найдено.");
+            trendChartPanel.clearData("Нет данных для графика");
+            return;
+        }
+
+        trendChartPanel.setData(years, series);
+        resultArea.setText("Сравнение по годам построено.\n"
+                + "Выбрано продуктов: " + selectedProducts.size() + "\n"
+                + "Выбрано лет: " + years.size() + "\n"
+                + "Построено точек: " + points + "\n\n"
+                + "Ломаная на графике показывает, как менялось значение по годам.");
+    }
+
     private String trimProduct(String product) {
         return product.length() <= 40 ? product : product.substring(0, 37) + "...";
+    }
+
+    private static class TrendChartPanel extends JPanel {
+        private static final Color[] SERIES_COLORS = new Color[] {
+                new Color(0x2F, 0x6F, 0xD0),
+                new Color(0xD1, 0x75, 0x1B),
+                new Color(0x2E, 0x8B, 0x57),
+                new Color(0xB0, 0x31, 0x60),
+                new Color(0x6C, 0x4C, 0x9C),
+                new Color(0x3C, 0x7D, 0x80)
+        };
+
+        private List<Integer> years = List.of();
+        private Map<String, Map<Integer, Double>> series = Map.of();
+        private String infoText = "Нажмите «Сравнить», чтобы построить график";
+
+        private void setData(List<Integer> years, Map<String, Map<Integer, Double>> series) {
+            this.years = new ArrayList<>(years);
+            this.series = new LinkedHashMap<>(series);
+            this.infoText = "";
+            repaint();
+        }
+
+        private void clearData(String text) {
+            this.years = List.of();
+            this.series = Map.of();
+            this.infoText = text;
+            repaint();
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+
+            int w = getWidth();
+            int h = getHeight();
+            int left = 56;
+            int right = 18;
+            int top = 18;
+            int bottom = 40;
+            int plotW = Math.max(1, w - left - right);
+            int plotH = Math.max(1, h - top - bottom);
+
+            g2.setColor(new Color(0xF8, 0xF8, 0xF6));
+            g2.fillRect(left, top, plotW, plotH);
+            g2.setColor(UiTheme.BORDER);
+            g2.drawRect(left, top, plotW, plotH);
+
+            if (series.isEmpty() || years.isEmpty()) {
+                g2.setColor(UiTheme.MUTED);
+                g2.setFont(UiTheme.baseFont());
+                FontMetrics fm = g2.getFontMetrics();
+                int x = Math.max(10, (w - fm.stringWidth(infoText)) / 2);
+                int y = h / 2;
+                g2.drawString(infoText, x, y);
+                g2.dispose();
+                return;
+            }
+
+            double minVal = Double.POSITIVE_INFINITY;
+            double maxVal = Double.NEGATIVE_INFINITY;
+            for (Map<Integer, Double> productSeries : series.values()) {
+                for (Double value : productSeries.values()) {
+                    minVal = Math.min(minVal, value);
+                    maxVal = Math.max(maxVal, value);
+                }
+            }
+            if (Double.compare(minVal, maxVal) == 0) {
+                minVal -= 1.0;
+                maxVal += 1.0;
+            }
+
+            g2.setFont(UiTheme.captionFont());
+            g2.setColor(UiTheme.MUTED);
+            for (int i = 0; i <= 4; i++) {
+                int y = top + (int) Math.round((plotH * i) / 4.0);
+                g2.setColor(new Color(0xE9, 0xE8, 0xE4));
+                g2.drawLine(left, y, left + plotW, y);
+                double v = maxVal - (maxVal - minVal) * i / 4.0;
+                g2.setColor(UiTheme.MUTED);
+                g2.drawString(String.format(Locale.US, "%.1f", v), 8, y + 4);
+            }
+
+            int yearCount = years.size();
+            for (int i = 0; i < yearCount; i++) {
+                int x = xAt(left, plotW, i, yearCount);
+                g2.setColor(new Color(0xE9, 0xE8, 0xE4));
+                g2.drawLine(x, top, x, top + plotH);
+                g2.setColor(UiTheme.MUTED);
+                String yearLabel = String.valueOf(years.get(i));
+                FontMetrics fm = g2.getFontMetrics();
+                g2.drawString(yearLabel, x - fm.stringWidth(yearLabel) / 2, h - 14);
+            }
+
+            int colorIndex = 0;
+            int legendX = left + 8;
+            int legendY = top + 14;
+            for (Map.Entry<String, Map<Integer, Double>> entry : series.entrySet()) {
+                Color color = SERIES_COLORS[colorIndex % SERIES_COLORS.length];
+                Map<Integer, Double> productSeries = entry.getValue();
+                g2.setColor(color);
+                g2.setStroke(new BasicStroke(2f));
+
+                Integer prevYear = null;
+                Double prevVal = null;
+                for (Integer year : years) {
+                    Double currentVal = productSeries.get(year);
+                    if (currentVal == null) {
+                        prevYear = null;
+                        prevVal = null;
+                        continue;
+                    }
+                    int x = xAt(left, plotW, years.indexOf(year), yearCount);
+                    int y = yAt(top, plotH, currentVal, minVal, maxVal);
+                    if (prevYear != null && prevVal != null) {
+                        int px = xAt(left, plotW, years.indexOf(prevYear), yearCount);
+                        int py = yAt(top, plotH, prevVal, minVal, maxVal);
+                        g2.drawLine(px, py, x, y);
+                    }
+                    Shape marker = new Ellipse2D.Double(x - 3, y - 3, 6, 6);
+                    g2.fill(marker);
+                    prevYear = year;
+                    prevVal = currentVal;
+                }
+
+                g2.fillRect(legendX, legendY - 8, 10, 10);
+                g2.setColor(UiTheme.TEXT);
+                g2.setFont(UiTheme.captionFont());
+                g2.drawString(trimLegend(entry.getKey()), legendX + 14, legendY);
+                legendY += 16;
+                colorIndex++;
+            }
+
+            g2.dispose();
+        }
+
+        private int xAt(int left, int width, int index, int count) {
+            if (count <= 1) {
+                return left + width / 2;
+            }
+            return left + (int) Math.round(index * (width / (double) (count - 1)));
+        }
+
+        private int yAt(int top, int height, double value, double minVal, double maxVal) {
+            double ratio = (value - minVal) / (maxVal - minVal);
+            return top + height - (int) Math.round(ratio * height);
+        }
+
+        private String trimLegend(String product) {
+            return product.length() <= 28 ? product : product.substring(0, 25) + "...";
+        }
     }
 }

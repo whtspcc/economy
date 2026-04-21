@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -37,18 +38,38 @@ public class XlsxDataLoader implements DataLoader {
 
         try (ZipFile zip = new ZipFile(path.toFile())) {
             String sharedStringsXml = readZipEntry(zip, "xl/sharedStrings.xml");
-            String sheetXml = readZipEntry(zip, "xl/worksheets/sheet1.xml");
-            if (sheetXml == null) {
-                throw new IllegalStateException("в xlsx не найден sheet1.xml");
-            }
             List<String> sharedStrings = parseSharedStrings(sharedStringsXml);
-            List<List<String>> rows = parseSheetRows(sheetXml, sharedStrings);
-            DataSet ds = parseRowsAsTable(rows);
+            DataSet ds = parseBestSheet(zip, sharedStrings);
             if (ds.isEmpty()) {
                 throw new IllegalStateException("в xlsx не найдено таблицы с годами/товарами");
             }
             return ds;
         }
+    }
+
+    private DataSet parseBestSheet(ZipFile zip, List<String> sharedStrings) throws Exception {
+        List<? extends ZipEntry> entries = zip.stream()
+                .filter(e -> !e.isDirectory())
+                .filter(e -> e.getName().startsWith("xl/worksheets/sheet") && e.getName().endsWith(".xml"))
+                .sorted(Comparator.comparing(ZipEntry::getName))
+                .toList();
+
+        DataSet best = new DataSet(List.of(), Map.of());
+        int bestScore = -1;
+        for (ZipEntry entry : entries) {
+            String sheetXml = readZipEntry(zip, entry.getName());
+            if (sheetXml == null || sheetXml.isBlank()) {
+                continue;
+            }
+            List<List<String>> rows = parseSheetRows(sheetXml, sharedStrings);
+            DataSet candidate = parseRowsAsTable(rows);
+            int score = candidate.getYears().size() * Math.max(1, candidate.getProductData().size());
+            if (!candidate.isEmpty() && score > bestScore) {
+                best = candidate;
+                bestScore = score;
+            }
+        }
+        return best;
     }
 
     private String readZipEntry(ZipFile zip, String entryName) throws Exception {

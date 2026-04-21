@@ -1,6 +1,10 @@
+import loader.XlsxDataLoader;
+import model.DataSet;
+
 import javax.swing.*;
 import java.awt.*;
 import java.io.*;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.List;
 
@@ -16,10 +20,10 @@ public class calcInf extends JFrame {
 
     public calcInf() {
         // 1. Сначала ГРУЗИМ данные
-        loadFromHorizontalCSV("prices.csv");
+        loadData();
 
         // 2. Только ПОТОМ настраиваем интерфейс
-        setTitle("Анализ цен 1970-2010 (Научная неделя)");
+        setTitle("Анализ цен по продуктовой корзине");
         setSize(600, 600);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setLayout(new BorderLayout(15, 15));
@@ -28,7 +32,7 @@ public class calcInf extends JFrame {
         // Панель выбора лет
         JPanel topPanel = new JPanel();
         if (availableYears.isEmpty()) {
-            topPanel.add(new JLabel("ОШИБКА: Данные не загружены. Проверьте prices.csv"));
+            topPanel.add(new JLabel("ОШИБКА: Данные не загружены. Проверьте xlsx/csv файл"));
         } else {
             yearFromBox = new JComboBox<>(availableYears.toArray(new Integer[0]));
             yearToBox = new JComboBox<>(availableYears.toArray(new Integer[0]));
@@ -66,6 +70,43 @@ public class calcInf extends JFrame {
         add(topPanel, BorderLayout.NORTH);
         add(scrollPane, BorderLayout.CENTER);
         add(bottomPanel, BorderLayout.SOUTH);
+    }
+
+    private void loadData() {
+        productData.clear();
+        availableYears.clear();
+
+        List<String> xlsxCandidates = List.of(
+                Path.of(System.getProperty("user.home"), "Downloads", "sred_potreb_cen_1991-2025_1.xlsx").toString(),
+                Path.of(System.getProperty("user.home"), "Downloads", "sred_potreb_cen_1991-2025.xlsx").toString(),
+                "prices.xlsx"
+        );
+
+        for (String xlsxPath : xlsxCandidates) {
+            if (loadFromXlsx(xlsxPath)) {
+                return;
+            }
+        }
+
+        loadFromHorizontalCSV("prices.csv");
+    }
+
+    private boolean loadFromXlsx(String filePath) {
+        try {
+            DataSet dataSet = new XlsxDataLoader(filePath).load();
+            if (dataSet == null || dataSet.isEmpty()) {
+                return false;
+            }
+            availableYears.addAll(dataSet.getYears());
+            for (Map.Entry<String, Map<Integer, Double>> entry : dataSet.getProductData().entrySet()) {
+                if (!entry.getValue().isEmpty()) {
+                    productData.put(entry.getKey(), new HashMap<>(entry.getValue()));
+                }
+            }
+            return !availableYears.isEmpty() && !productData.isEmpty();
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private BufferedReader createReader(String fileName) throws IOException {
